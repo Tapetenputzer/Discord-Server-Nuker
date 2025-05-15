@@ -6,9 +6,9 @@ import random
 import string
 
 # Gib hier deinen Bot-Token ein:
-TOKEN = input("Bitte gib deinen Discord-Bot-Token ein: ").strip()
+TOKEN = input("Bot Token: ").strip()
 if not TOKEN:
-    raise RuntimeError("Kein Token eingegeben. Beende das Programm.")
+    raise RuntimeError("No Token.")
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -126,7 +126,7 @@ async def fart(
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"Bot ist online als {bot.user}")
+    print(f"Bot is online as {bot.user}")
 
 if __name__ == "__main__":
     bot.run(TOKEN)
